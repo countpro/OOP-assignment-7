@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>낼름낼름 훅 🐸</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body {
+  width: 100%; height: 100%;
+}
+body {
+  background: #060e1c;
+  display: flex; justify-content: center; align-items: center;
+  overflow: hidden;
+  font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+  touch-action: none; user-select: none;
+}
+
+/* ── 전체화면 스케일링 ──
+   캔버스 내부 해상도(480×780)는 그대로 유지.
+   #wrap을 480×780 고정으로 두고,
+   CSS transform:scale()로 뷰포트에 꽉 차게 키운다.
+   비율 유지하면서 뷰포트를 최대한 채움.
+── */
+#wrap {
+  position: relative;
+  width: 480px;
+  height: 780px;
+  flex-shrink: 0;
+  overflow: hidden;
+  transform-origin: center center;
+  transform: scale(var(--scale, 1));
+}
+canvas { display:block; width:100%; height:100%; }
+
+/* ── HUD ── */
+#hud {
+  position:absolute; top:0; left:0; right:0;
+  padding:14px 16px 0;
+  display:flex; justify-content:space-between; align-items:flex-start;
+  pointer-events:none;
+}
+.hud-pill {
+  background:rgba(0,0,0,0.55);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:14px; padding:7px 14px;
+  color:rgba(255,255,255,0.5); font-size:11px; font-weight:600;
+  letter-spacing:.8px; text-transform:uppercase;
+}
+.hud-pill b { display:block; font-size:20px; font-weight:800; color:#6effa0; line-height:1.1; }
+#hpRow {
+  position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
+  display:flex; gap:6px; pointer-events:none;
+}
+.heart { font-size:20px; line-height:1; transition:transform .15s; }
+.heart.lost { opacity:.22; filter:grayscale(1); }
+.heart.pop  { transform:scale(1.6); }
+
+/* ── 일시정지 버튼 ── */
+#pauseBtn {
+  position:absolute; top:14px; left:50%; transform:translateX(-50%);
+  background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.1);
+  border-radius:20px; padding:6px 16px; color:rgba(255,255,255,0.4);
+  font-size:12px; font-weight:600; cursor:pointer; letter-spacing:.5px;
+  pointer-events:all; z-index:5; transition:all .15s; display:none;
+}
+#pauseBtn:hover { background:rgba(0,0,0,0.75); color:#fff; }
+
+/* ── 플로팅 요소 ── */
+#comboEl {
+  position:absolute; top:44%; left:50%; transform:translate(-50%,-50%);
+  font-size:26px; font-weight:900; color:#ffc93c;
+  text-shadow:0 0 14px rgba(255,180,0,.7);
+  pointer-events:none; opacity:0; transition:opacity .2s;
+}
+
+/* ── 오버레이 공통 ── */
+.overlay {
+  position:absolute; inset:0; z-index:20;
+  background:rgba(4,12,26,0.94);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:28px 24px; gap:0;
+}
+.overlay.hidden { display:none; }
+.ov-emoji  { font-size:52px; margin-bottom:10px; line-height:1; }
+.ov-title  { font-size:34px; font-weight:900; color:#6effa0; letter-spacing:-1px; line-height:1; margin-bottom:8px; }
+.ov-sub    { font-size:13.5px; color:rgba(255,255,255,.42); text-align:center;
+             line-height:1.7; margin-bottom:18px; max-width:290px; }
+.ov-divider{ width:100%; height:1px; background:rgba(255,255,255,.06); margin:14px 0; }
+
+/* ── 범례 ── */
+.legend { display:flex; flex-direction:column; gap:5px; margin-bottom:18px; width:100%; max-width:270px; }
+.lg-row { display:flex; align-items:center; gap:9px; font-size:12px; color:rgba(255,255,255,.62); }
+.lg-dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
+
+/* ── 버튼 ── */
+.btn-main {
+  background:#6effa0; color:#031a0c; border:none; border-radius:50px;
+  padding:13px 44px; font-size:16px; font-weight:800; cursor:pointer;
+  letter-spacing:.3px; transition:all .12s; width:100%; max-width:230px;
+  margin-bottom:10px;
+}
+.btn-main:hover { background:#90ffb8; transform:translateY(-1px); }
+.btn-main:active { transform:scale(.97); }
+.btn-sub {
+  background:transparent; color:rgba(255,255,255,.38); border:1px solid rgba(255,255,255,.12);
+  border-radius:50px; padding:10px 32px; font-size:13px; font-weight:600;
+  cursor:pointer; transition:all .12s; width:100%; max-width:230px; margin-bottom:8px;
+}
+.btn-sub:hover { color:rgba(255,255,255,.75); border-color:rgba(255,255,255,.3); }
+
+/* ── 결과 ── */
+.stat-row { display:flex; justify-content:space-between; width:100%; max-width:250px; margin-bottom:6px; }
+.stat-label { font-size:13px; color:rgba(255,255,255,.38); }
+.stat-val   { font-size:16px; font-weight:800; color:#6effa0; }
+
+/* ── 단축키 ── */
+.keys-section { display:flex; flex-direction:column; gap:5px; width:100%; max-width:260px; margin-bottom:14px; }
+.key-row { display:flex; align-items:center; gap:8px; font-size:12px; color:rgba(255,255,255,.4); }
+.kbd { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15);
+  border-radius:5px; padding:2px 8px; font-size:11px; font-weight:700;
+  color:rgba(255,255,255,.6); white-space:nowrap; }
+.esc-hint { font-size:11px; color:rgba(255,255,255,.18); margin-top:6px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" width="480" height="780"></canvas>
+  <div id="hud">
+    <div class="hud-pill">거리<b id="scoreTxt">0m</b></div>
+    <div class="hud-pill" style="text-align:right">최고<b id="bestTxt">0m</b></div>
+  </div>
+  <button id="pauseBtn">⏸ 일시정지</button>
+  <div id="hpRow">
+    <div class="heart" id="h1">❤️</div>
+    <div class="heart" id="h2">❤️</div>
+    <div class="heart" id="h3">❤️</div>
+  </div>
+  <div id="comboEl"></div>
+  <div class="overlay" id="scrStart">
+    <div class="ov-emoji">🐸</div>
+    <div class="ov-title">낼름낼름 훅</div>
+    <div class="ov-sub">화면을 <b style="color:#a0ffbe">누르면</b> 혀를 발사해 스윙,<br><b style="color:#a0ffbe">떼면</b> 관성으로 날아갑니다!</div>
+    <div class="legend">
+      <div class="lg-row"><div class="lg-dot" style="background:#c8dcff"></div> 일반 공 — 기본 지지점</div>
+      <div class="lg-row"><div class="lg-dot" style="background:#ffd700"></div> ⭐ 황금 공 — 속도 +3 부스트</div>
+      <div class="lg-row"><div class="lg-dot" style="background:#ff6b6b"></div> 🔥 터보 공 — 3초 가속 모드</div>
+      <div class="lg-row"><div class="lg-dot" style="background:#4ecdc4"></div> ❄️ 냉각 공 — 장애물 면역 쉴드</div>
+      <div class="lg-row"><div class="lg-dot" style="background:#ff69b4"></div> 🌀 무빙 공 — 좌우로 이동</div>
+      <div class="lg-row"><div class="lg-dot" style="background:#ff4500;border-radius:3px"></div> 장애물(가시/칼날/레이저) — ❤️ -1</div>
+    </div>
+    <button class="btn-main" id="btnStart">게임 시작!</button>
+    <div class="esc-hint">마우스 클릭 또는 터치로 조작 · ESC = 일시정지</div>
+  </div>
+  <div class="overlay hidden" id="scrPause">
+    <div class="ov-emoji" style="font-size:38px">⏸</div>
+    <div class="ov-title">일시정지</div>
+    <div style="height:14px"></div>
+    <div class="keys-section">
+      <div class="key-row"><span class="kbd">클릭 / 터치</span> 혀 발사 &amp; 스윙</div>
+      <div class="key-row"><span class="kbd">손 떼기</span> 관성 발사</div>
+      <div class="key-row"><span class="kbd">ESC</span> 일시정지 · 재개</div>
+      <div class="key-row"><span class="kbd">Space</span> 재개</div>
+    </div>
+    <div class="ov-divider"></div>
+    <button class="btn-main" id="btnResume">▶ 계속하기</button>
+    <button class="btn-sub" id="btnPauseMenu">메뉴로 돌아가기</button>
+  </div>
+  <div class="overlay hidden" id="scrOver">
+    <div class="ov-emoji">💀</div>
+    <div class="ov-title">게임 오버</div>
+    <div style="height:14px"></div>
+    <div class="stat-row"><span class="stat-label">이번 거리</span><span class="stat-val" id="ovScore">0m</span></div>
+    <div class="stat-row"><span class="stat-label">최고 거리</span><span class="stat-val" id="ovBest">0m</span></div>
+    <div class="ov-divider"></div>
+    <button class="btn-main" id="btnRetry">🔄 다시 도전!</button>
+    <button class="btn-sub" id="btnOverMenu">메뉴로 돌아가기</button>
+  </div>
+</div>
+<script>
+/* ═══════════════════════════════════════════════════
+   draw.js — 렌더링 전담 모듈
+═══════════════════════════════════════════════════ */
+
+/* ── 메인 드로우 루프 ── */
+function draw() {
+  cx.fillStyle = '#05101f';
+  cx.fillRect(0, 0, W, H);
+
+  /* 별 */
+  cx.save();
+  for (let i = 0; i < 90; i++) {
+    const px = ((i * 139.7 + cam.x * 0.04) % W + W) % W;
+    const py = ((i * 83.1  + cam.y * 0.025) % H + H) % H;
+    cx.globalAlpha = 0.12 + ((i * 37) % 10) / 50;
+    cx.fillStyle = '#fff';
+    cx.fillRect(px, py, 1 + ((i*7)%3)*0.4, 1 + ((i*7)%3)*0.4);
+  }
+  cx.restore();
+
+  cx.save();
+  cx.translate(-cam.x, -cam.y);
+
+  /* 사망선 표시 (빨간 점선) */
+  const deathLine = cam.y + H + 40;
+  cx.strokeStyle = 'rgba(255,60,60,0.25)';
+  cx.lineWidth = 2; cx.setLineDash([10, 8]);
+  cx.beginPath(); cx.moveTo(cam.x, deathLine); cx.lineTo(cam.x + W, deathLine); cx.stroke();
+  cx.setLineDash([]);
+
+  /* 코인 */
+  coins.forEach(c => {
+    if (c.done) return;
+    if (c.x - cam.x < -20 || c.x - cam.x > W + 20) return;
+    cx.save(); cx.translate(c.x, c.y); cx.rotate(frame * 0.06);
+    cx.fillStyle = '#ffd700'; cx.shadowColor = '#ffd700'; cx.shadowBlur = 8;
+    cx.beginPath(); cx.arc(0, 0, c.r, 0, Math.PI*2); cx.fill();
+    cx.shadowBlur = 0; cx.fillStyle = '#b85e00';
+    cx.font = 'bold 9px sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    cx.fillText('★', 0, 0.5);
+    cx.restore();
+  });
+
+  /* 장애물 */
+  obs.forEach(o => {
+    if (o.x - cam.x < -60 || o.x - cam.x > W + 60) return;
+    cx.save(); cx.translate(o.x, o.y);
+    if (o.type === 'spike') drawSpike(o.phase);
+    else if (o.type === 'blade') { cx.rotate(o.rot); drawBlade(); }
+    else if (o.type === 'laser') drawLaser(o);
+    cx.restore();
+  });
+
+  /* 훅 포인트 */
+  hooks.forEach(h => {
+    if (!h.alive) return;
+    if (h.x - cam.x < -60 || h.x - cam.x > W + 60) return;
+    cx.save(); cx.translate(h.x, h.y);
+    const s = 0.82 + h.pulse * 0.36;
+    cx.scale(s, s);
+    if (h.glow) { cx.shadowColor = h.glow; cx.shadowBlur = 16; }
+    cx.fillStyle = h.color;
+    cx.beginPath(); cx.arc(0, 0, h.r, 0, Math.PI*2); cx.fill();
+    cx.strokeStyle = 'rgba(255,255,255,0.3)'; cx.lineWidth = 1.5; cx.stroke();
+    cx.shadowBlur = 0;
+    const icons = { normal:'🪲', gold:'⭐', turbo:'🔥', ice:'❄️', moving:'🌀' };
+    cx.font = `bold ${h.r - 1}px sans-serif`;
+    cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    cx.fillText(icons[h.type] || '●', 0, 0.5);
+    cx.restore();
+  });
+
+  /* 혀 */
+  if (P.mode === 'swing') {
+    cx.save();
+    cx.strokeStyle = '#ff77c0'; cx.lineWidth = 3; cx.lineCap = 'round';
+    cx.setLineDash([7, 5]);
+    cx.beginPath(); cx.moveTo(P.x, P.y); cx.lineTo(P.hkX, P.hkY); cx.stroke();
+    cx.setLineDash([]);
+    cx.fillStyle = '#ffaadd';
+    cx.beginPath(); cx.arc(P.hkX, P.hkY, 5, 0, Math.PI*2); cx.fill();
+    cx.restore();
+  }
+
+  /* 파티클 */
+  parts.forEach(p => {
+    cx.globalAlpha = Math.max(0, p.life / 38);
+    cx.fillStyle = p.col;
+    cx.beginPath(); cx.arc(p.x, p.y, p.r, 0, Math.PI*2); cx.fill();
+    p.x += p.vx; p.y += p.vy; p.vy += 0.1; p.vx *= 0.97; p.life--;
+  });
+  parts = parts.filter(p => p.life > 0);
+  cx.globalAlpha = 1;
+
+  /* 개구리 */
+  drawFrog();
+
+  /* 무적 시간 표시 (부활 후 2초) */
+  if (invincibleT > 0) {
+    const ratio = invincibleT / INVINCIBLE_FRAMES;
+    cx.save();
+    cx.translate(P.x - cam.x, P.y - cam.y);
+    /* 무적 링 */
+    cx.strokeStyle = `rgba(255,220,100,${0.5 * ratio})`;
+    cx.lineWidth = 3;
+    cx.shadowColor = '#ffc93c';
+    cx.shadowBlur = 12 * ratio;
+    cx.beginPath();
+    cx.arc(0, 0, PLAYER_R + 14 + Math.sin(frame * 0.2) * 3, 0, Math.PI * 2);
+    cx.stroke();
+    cx.shadowBlur = 0;
+    /* 카운트다운 텍스트 */
+    const sec = (invincibleT / 60).toFixed(1);
+    cx.globalAlpha = ratio * 0.85;
+    cx.font = 'bold 11px sans-serif';
+    cx.fillStyle = '#ffc93c';
+    cx.textAlign = 'center';
+    cx.fillText(`무적 ${sec}s`, 0, -PLAYER_R - 22);
+    cx.restore();
+  }
+
+  /* 쉴드 */
+  if (P.shield) {
+    cx.save();
+    cx.strokeStyle = '#4ecdc4'; cx.lineWidth = 3;
+    cx.globalAlpha = 0.45 + 0.32 * Math.sin(frame * 0.14);
+    cx.shadowColor = '#4ecdc4'; cx.shadowBlur = 14;
+    cx.beginPath(); cx.arc(P.x, P.y, PLAYER_R + 10, 0, Math.PI*2); cx.stroke();
+    cx.restore();
+  }
+
+  /* 플로팅 텍스트 */
+  floatTxts.forEach(t => {
+    cx.globalAlpha = Math.max(0, t.life / 78);
+    cx.font = 'bold 15px sans-serif'; cx.textAlign = 'center';
+    cx.fillStyle = t.col; cx.shadowColor = t.col; cx.shadowBlur = 5;
+    cx.fillText(t.txt, t.x, t.y);
+    cx.shadowBlur = 0;
+    t.y += t.vy; t.life--;
+  });
+  floatTxts = floatTxts.filter(t => t.life > 0);
+  cx.globalAlpha = 1;
+
+  cx.restore();
+
+  /* 피격 플래시 */
+  if (damCD > 72) {
+    cx.fillStyle = `rgba(255,0,0,${((damCD - 72) / 18) * 0.26})`;
+    cx.fillRect(0, 0, W, H);
+  }
+
+  /* 속도 감 — 빠르면 모션블러 힌트 (측면 그라데이션) */
+  if (P.vx > 14) {
+    const alpha = Math.min((P.vx - 14) / 10, 0.18);
+    const g2 = cx.createLinearGradient(W * 0.6, 0, W, 0);
+    g2.addColorStop(0, 'rgba(0,0,0,0)');
+    g2.addColorStop(1, `rgba(20,40,80,${alpha})`);
+    cx.fillStyle = g2; cx.fillRect(0, 0, W, H);
+  }
+
+  /* HUD 갱신 */
+  document.getElementById('scoreTxt').textContent = score + 'm';
+  document.getElementById('bestTxt').textContent  = best  + 'm';
+
+  /* 콤보 */
+  const cEl = document.getElementById('comboEl');
+  if (combo >= 3) { cEl.textContent = `🔥 ${combo}x 콤보!`; cEl.style.opacity = '1'; }
+  else cEl.style.opacity = '0';
+}
+
+/* ── 개구리 ── */
+function drawFrog() {
+  /* 무적 중 깜빡임: 부활 무적(invincibleT) 또는 피격 무적(damCD) */
+  if (invincibleT > 0) {
+    /* 부활 무적: 빠른 깜빡임 */
+    if (Math.floor(invincibleT / 4) % 2 === 0) return;
+  } else if (damCD > 0 && Math.floor(damCD / 6) % 2 === 0) {
+    /* 피격 무적: 느린 깜빡임 */
+    return;
+  }
+  cx.save();
+  cx.translate(P.x, P.y);
+  const ang = P.mode === 'swing'
+    ? Math.atan2(P.hkY - P.y, P.hkX - P.x) + Math.PI / 2
+    : Math.atan2(P.vy, P.vx) + Math.PI / 2;
+  cx.rotate(ang);
+  const s = P.boosted ? 1.18 : 1;
+  cx.scale(s, s);
+  cx.fillStyle = P.boosted ? '#aaff44' : '#50d468';
+  cx.beginPath(); cx.ellipse(0, 2, 13, 11, 0, 0, Math.PI*2); cx.fill();
+  cx.fillStyle = '#b8ffc0';
+  cx.beginPath(); cx.ellipse(0, 4, 7, 6, 0, 0, Math.PI*2); cx.fill();
+  cx.fillStyle = '#fff';
+  cx.beginPath(); cx.arc(-5.5, -7, 4.5, 0, Math.PI*2); cx.fill();
+  cx.beginPath(); cx.arc( 5.5, -7, 4.5, 0, Math.PI*2); cx.fill();
+  cx.fillStyle = '#111';
+  cx.beginPath(); cx.arc(-5.5, -7, 2.2, 0, Math.PI*2); cx.fill();
+  cx.beginPath(); cx.arc( 5.5, -7, 2.2, 0, Math.PI*2); cx.fill();
+  cx.strokeStyle = '#267a36'; cx.lineWidth = 1.5;
+  cx.beginPath(); cx.arc(0, -2, 4, 0.2, Math.PI - 0.2); cx.stroke();
+  cx.restore();
+}
+
+/* ── 장애물 드로우 ── */
+function drawSpike(phase) {
+  const bob = Math.sin(phase * 2) * 3;
+  cx.save(); cx.translate(0, bob);
+  cx.fillStyle = '#ff4500'; cx.shadowColor = '#ff4500'; cx.shadowBlur = 10;
+  for (let i = 0; i < 4; i++) {
+    cx.save(); cx.rotate(i * Math.PI / 2);
+    cx.beginPath(); cx.moveTo(0, -19); cx.lineTo(5.5, 0); cx.lineTo(-5.5, 0); cx.closePath(); cx.fill();
+    cx.restore();
+  }
+  cx.restore();
+}
+
+function drawBlade() {
+  cx.fillStyle = '#b8d8ff'; cx.shadowColor = '#90c8ff'; cx.shadowBlur = 8;
+  for (let i = 0; i < 3; i++) {
+    cx.save(); cx.rotate(i * Math.PI * 2 / 3);
+    cx.beginPath(); cx.moveTo(0, -22); cx.lineTo(7, -4); cx.lineTo(0, 0); cx.lineTo(-7, -4); cx.closePath(); cx.fill();
+    cx.restore();
+  }
+  cx.fillStyle = '#334'; cx.shadowBlur = 0;
+  cx.beginPath(); cx.arc(0, 0, 5, 0, Math.PI*2); cx.fill();
+}
+
+function drawLaser(o) {
+  if (!o.on) {
+    cx.strokeStyle = 'rgba(255,0,80,0.18)'; cx.lineWidth = 2; cx.setLineDash([5, 9]);
+    cx.beginPath(); cx.moveTo(-o.w/2, 0); cx.lineTo(o.w/2, 0); cx.stroke(); cx.setLineDash([]);
+  } else {
+    cx.strokeStyle = '#ff0050'; cx.lineWidth = 6; cx.shadowColor = '#ff0050'; cx.shadowBlur = 22;
+    cx.beginPath(); cx.moveTo(-o.w/2, 0); cx.lineTo(o.w/2, 0); cx.stroke();
+    cx.lineWidth = 2; cx.strokeStyle = '#fff'; cx.shadowBlur = 0;
+    cx.beginPath(); cx.moveTo(-o.w/2, 0); cx.lineTo(o.w/2, 0); cx.stroke();
+  }
+}
+/* ═══════════════════════════════════════════════════
+   game.js — 게임 로직 전담 모듈
+═══════════════════════════════════════════════════ */
+
+/* ── 캔버스 & 상수 ── */
+const cv = document.getElementById('c');
+const cx = cv.getContext('2d');
+const W = 480, H = 780;
+const G = 0.42;          // 중력
+const PLAYER_R = 17;     // 개구리 반지름
+const MAX_VX = 24;       // 최대 수평속도
+
+/* ── 부활 무적 시간: 2초 = 120프레임(60fps 기준) ── */
+const INVINCIBLE_FRAMES = 120;
+
+/* ═══════════════════════════════════════════════════
+   게임 상태
+═══════════════════════════════════════════════════ */
+let gState = 'start';
+let score = 0;
+let best  = parseInt(localStorage.getItem('nhBest') || '0');
+let hp    = 3;
+let frame = 0;
+let combo = 0, comboT = 0;
+let damCD = 0;           // 피격 무적 프레임 (피해 후 짧은 무적)
+let invincibleT = 0;     // 부활 무적 프레임 (2초)
+let lastChunkX = 0;
+let lastHookX = 0;       // 마지막으로 잡은 공점의 x 좌표
+
+/* ── 입력 상태 ──
+   ★ 버그 수정 (핵심):
+     pointerDown을 명시적으로 추적한다.
+     - onDown  → pointerDown = true  → tryHook() 1회 호출
+     - onUp    → pointerDown = false → release() 호출
+     - release()가 armLen 초과 등으로 자동 호출될 때에도,
+       pointerDown === true이면 P.mode를 'fly'로만 바꾸고
+       새 훅은 잡지 않는다.
+     - 오직 pointerDown이 false(손을 뗀 상태)에서 다시 onDown이
+       발생해야만 tryHook()으로 새 공을 잡을 수 있다.
+── */
+let pointerDown = false;
+
+/* ═══════════════════════════════════════════════════
+   플레이어
+═══════════════════════════════════════════════════ */
+let P;
+function mkPlayer() {
+  return {
+    x: 100, y: 340,
+    vx: 5, vy: 0,
+    mode: 'fly',          // 'fly' | 'swing'
+    angle: 0, angVel: 0, armLen: 0,
+    hkX: 0, hkY: 0,
+    hkRef: null,          // ★ 인덱스 대신 훅 객체 참조 저장
+    shield: false, shieldT: 0,
+    boosted: false, boostT: 0
+  };
+}
+
+/* ═══════════════════════════════════════════════════
+   카메라
+═══════════════════════════════════════════════════ */
+let cam = { x: 0, y: 0 };
+
+/* ═══════════════════════════════════════════════════
+   엔티티
+═══════════════════════════════════════════════════ */
+let hooks = [], obs = [], parts = [], coins = [], floatTxts = [];
+
+/* ═══════════════════════════════════════════════════
+   초기화
+═══════════════════════════════════════════════════ */
+function init() {
+  score = 0; hp = 3; frame = 0;
+  combo = 0; comboT = 0; damCD = 0; invincibleT = 0;
+  pointerDown = false;
+  lastChunkX = 0; lastHookX = 0;
+  P = mkPlayer();
+  cam = { x: 0, y: 0 };
+  hooks = []; obs = []; parts = []; coins = []; floatTxts = [];
+  updateHPUI(false);
+  spawnChunk(0);
+  spawnChunk(700);
+  spawnChunk(1400);
+}
+
+/* ═══════════════════════════════════════════════════
+   청크 생성
+═══════════════════════════════════════════════════ */
+function spawnChunk(sx) {
+  lastChunkX = Math.max(lastChunkX, sx + 850);
+  const progress = Math.min(sx / 10000, 1);
+  let x = sx + 80;
+  while (x < sx + 850) {
+    const minGap = 220 - progress * 40;
+    const maxGap = 380 - progress * 60;
+    x += minGap + Math.random() * (maxGap - minGap);
+
+    const y = 150 + Math.random() * 320;
+    hooks.push(mkHook(x, y, pickType(x)));
+
+    if (x > 500 && Math.random() < 0.28 + progress * 0.15) {
+      spawnOb(x + 40 + Math.random() * 100, y + 70 + Math.random() * 150);
+    }
+    if (Math.random() < 0.42) {
+      coins.push({ x: x - 80 - Math.random() * 60, y: y + 50 + Math.random() * 80, r: 9, done: false });
+    }
+  }
+}
+
+function pickType(x) {
+  if (x < 350) return 'normal';
+  const r = Math.random();
+  if (r < .08)  return 'gold';
+  if (r < .15)  return 'turbo';
+  if (r < .23)  return 'ice';
+  if (r < .42)  return 'moving';
+  return 'normal';
+}
+
+function mkHook(x, y, type) {
+  const colors = { normal:'#c8dcff', gold:'#ffd700', turbo:'#ff6b6b', ice:'#4ecdc4', moving:'#ff69b4' };
+  const glows  = { gold:'rgba(255,215,0,.5)', turbo:'rgba(255,90,90,.5)', ice:'rgba(78,205,196,.5)', moving:'rgba(255,105,180,.5)' };
+  const h = { x, y, type, r: 13, alive: true, phase: Math.random() * Math.PI * 2,
+              color: colors[type] || '#ccc', glow: glows[type] || null, pulse: 0 };
+  if (type === 'moving') { h.ox = x; h.amp = 45 + Math.random() * 40; h.freq = 0.016 + Math.random() * 0.014; }
+  return h;
+}
+
+function spawnOb(x, y) {
+  const types = ['spike', 'spike', 'blade', 'laser'];
+  const t = types[Math.floor(Math.random() * types.length)];
+  const o = { x, y, type: t, phase: Math.random() * Math.PI * 2 };
+  if (t === 'blade') { o.rot = 0; o.rs = 0.032 + Math.random() * 0.038; }
+  if (t === 'laser') { o.w = 65 + Math.random() * 55; o.on = false; o.timer = 0; o.period = 100 + Math.random() * 80; }
+  obs.push(o);
+}
+
+/* ═══════════════════════════════════════════════════
+   입력 처리
+   ★ 버그 수정 (핵심):
+     pointerDown을 명시적으로 추적한다.
+     - onDown  → pointerDown = true  → tryHook() 1회 호출
+     - onUp    → pointerDown = false → release() 호출
+     - armLen 초과 등으로 release()가 내부에서 자동 호출돼
+       P.mode가 'fly'가 되더라도, pointerDown === true이면
+       tryHook()이 절대 호출되지 않는다.
+     → 꾹 누르고 있는 동안은 새 공으로 이동 불가.
+     → 손을 떼고 다시 눌러야만 새 공을 잡는다.
+═══════════════════════════════════════════════════ */
+function onDown(e) {
+  e.preventDefault();
+  if (gState !== 'playing') return;
+  pointerDown = true;
+  tryHook();   // 이벤트 발생 시 딱 1번만 후킹 시도
+}
+
+function onUp(e) {
+  e.preventDefault();
+  pointerDown = false;   // 상태를 먼저 false로 — 이후 release에서 fly 전환
+  if (gState !== 'playing') return;
+  release();
+}
+
+/* ═══════════════════════════════════════════════════
+   후킹 (swing 진입)
+   ★ 버그 수정 핵심:
+     - tryHook()은 P.mode === 'fly' 일 때만 동작.
+     - swing 중에는 절대 새 훅을 잡지 않음.
+     - 따라서 클릭을 계속 누르고 있어도 swing이 끝나기 전까지
+       다음 공으로 자동 이동하지 않음.
+     - release() 후 P.mode가 'fly'가 되고 나서
+       다시 onDown 이벤트가 발생해야 새 훅을 잡을 수 있음.
+═══════════════════════════════════════════════════ */
+function tryHook() {
+  if (P.mode !== 'fly') return;          // swing 중엔 절대 재후킹 안 함
+  if (!pointerDown) return;             // 클릭 중이 아니면 후킹 불가
+
+  let bestIdx = -1, bestD = 1e9;
+  hooks.forEach((h, i) => {
+    if (!h.alive) return;
+    const dx = h.x - P.x, dy = h.y - P.y;
+    if (dx < -30) return;         // 뒤쪽 훅 무시
+    const d = Math.hypot(dx, dy);
+    if (d < 360 && d < bestD) { bestD = d; bestIdx = i; }
+  });
+  if (bestIdx < 0) return;
+
+  const h = hooks[bestIdx];
+  P.hkRef  = h;                         // ★ 객체 참조 저장
+  P.hkX    = h.x; P.hkY = h.y;
+  lastHookX = h.x;                      // 마지막으로 잡은 공점 x 기록
+  P.armLen = Math.max(1, Math.hypot(P.x - h.x, P.y - h.y));
+  P.angle  = Math.atan2(P.y - h.y, P.x - h.x);
+  /* 현재 속도 → 각속도 변환 */
+  P.angVel = (P.vy * Math.cos(P.angle) - P.vx * Math.sin(P.angle)) / P.armLen;
+  P.mode   = 'swing';
+
+  /* 퍼펙트 훅 판정 */
+  if (bestD < h.r + 20) {
+    floatText('PERFECT!', P.x, P.y - 44, '#ffd700');
+    burst(h.x, h.y, '#ffd700', 14);
+    addCombo();
+  }
+  applyHookFx(h);
+  burst(h.x, h.y, h.color, 7);
+}
+
+function applyHookFx(h) {
+  switch (h.type) {
+    case 'gold':
+      P.vx = Math.min(P.vx + 3, MAX_VX);
+      floatText('SPEED UP!', P.x, P.y - 40, '#ffd700'); break;
+    case 'turbo':
+      P.boosted = true; P.boostT = 180;
+      P.vx = Math.min(P.vx + 4, MAX_VX);
+      floatText('TURBO!!', P.x, P.y - 40, '#ff6b6b');
+      burst(P.x, P.y, '#ff6b6b', 18); break;
+    case 'ice':
+      P.shield = true; P.shieldT = 280;
+      floatText('SHIELD!', P.x, P.y - 40, '#4ecdc4'); break;
+  }
+  h.alive = false;
+}
+
+function release() {
+  if (P.mode !== 'swing') return;
+  /* 각속도 → 선속도 */
+  P.vx = -Math.sin(P.angle) * P.angVel * P.armLen;
+  P.vy =  Math.cos(P.angle) * P.angVel * P.armLen;
+  P.mode  = 'fly';
+  P.hkRef = null;
+}
+
+/* ═══════════════════════════════════════════════════
+   물리 업데이트
+═══════════════════════════════════════════════════ */
+function updatePlayer() {
+  if (P.mode === 'swing') {
+    /* 무빙 훅 추적: 인덱스 대신 객체 참조로 안전하게 접근 */
+    const hk = P.hkRef;
+    if (hk && hk.alive) { P.hkX = hk.x; P.hkY = hk.y; }
+
+    const angAcc = -(G / P.armLen) * Math.sin(P.angle);
+    P.angVel += angAcc;
+    P.angVel *= 0.998;
+    P.angle  += P.angVel;
+    P.x = P.hkX + Math.cos(P.angle) * P.armLen;
+    P.y = P.hkY + Math.sin(P.angle) * P.armLen;
+    if (P.armLen > 480) release();
+  } else {
+    P.vy += G;
+    if (P.boosted) P.vx = Math.min(P.vx * 1.004, MAX_VX);
+    P.vx = Math.min(P.vx, MAX_VX);
+    P.x += P.vx;
+    P.y += P.vy;
+  }
+
+  if (P.shieldT > 0) { P.shieldT--; if (!P.shieldT) P.shield = false; }
+  if (P.boostT  > 0) { P.boostT--;  if (!P.boostT)  P.boosted = false; }
+
+  /* 거리 점수 */
+  const prev = score;
+  score = Math.max(score, Math.floor((P.x - 100) / 8));
+  if (score > best) best = score;
+  if (Math.floor(score / 50) > Math.floor(prev / 50)) burst(P.x, P.y, '#ffd700', 10);
+
+  /* 낙사 판정 */
+  if (P.y > cam.y + H + 40) {
+    die(true);
+  }
+}
+
+function updateHooks() {
+  hooks.forEach(h => {
+    if (!h.alive) return;
+    if (h.type === 'moving') {
+      h.phase += h.freq;
+      h.x = h.ox + Math.sin(h.phase) * h.amp;
+    }
+    h.pulse = (Math.sin(frame * 0.05 + h.phase) + 1) * 0.5;
+  });
+}
+
+function updateObs() {
+  obs.forEach(o => {
+    o.phase += 0.03;
+    if (o.type === 'blade') o.rot += o.rs;
+    if (o.type === 'laser') {
+      o.timer++;
+      if (o.timer >= o.period) { o.on = !o.on; o.timer = 0; }
+    }
+    /* 무적 중 피해 무시: 쉴드, 피격 무적, 부활 무적 모두 포함 */
+    if (P.shield || damCD > 0 || invincibleT > 0) return;
+    let hit = false;
+    const dx = P.x - o.x, dy = P.y - o.y, d = Math.hypot(dx, dy);
+    if (o.type === 'spike' && d < 24) hit = true;
+    if (o.type === 'blade' && d < 28) hit = true;
+    if (o.type === 'laser' && o.on) {
+      if (Math.abs(dy) < 13 && P.x > o.x - o.w/2 && P.x < o.x + o.w/2) hit = true;
+    }
+    if (hit) die(false);
+  });
+}
+
+function updateCoins() {
+  coins.forEach(c => {
+    if (c.done) return;
+    if (Math.hypot(P.x - c.x, P.y - c.y) < PLAYER_R + c.r) {
+      c.done = true; score += 5;
+      burst(c.x, c.y, '#ffd700', 6);
+      floatText('+5', c.x, c.y - 10, '#ffd700');
+    }
+  });
+}
+
+/* ═══════════════════════════════════════════════════
+   사망 처리
+   ★ 수정:
+     1. 낙사 시 부활 위치: 죽은 x 위치보다 오른쪽(+120px)에 배치해
+        장애물 없는 안전한 지점에서 부활하도록 개선.
+     2. 부활 시 2초(INVINCIBLE_FRAMES) 무적 부여.
+     3. 부활 무적 중에는 장애물 피해를 입지 않음.
+═══════════════════════════════════════════════════ */
+function die(isFall) {
+  /* 부활 무적 중에는 낙사 외 피해 무시 */
+  if (invincibleT > 0 && !isFall) return;
+  if (damCD > 0 && !isFall) return;
+
+  hp--;
+  updateHPUI(true);
+  burst(P.x, P.y, '#ff4444', 22);
+
+  if (hp <= 0) {
+    gState = 'over';
+    showOverlay('over');
+    return;
+  }
+
+  damCD = 90;
+
+  /* 부활 위치 결정 */
+  if (isFall) {
+    /* 마지막으로 잡았던 공점(lastHookX) 이후의 가장 가까운 공점을 찾아 부활
+       - 공점이 없으면 lastHookX + 200 위치로 fallback */
+    let spawnH = null;
+    let spawnD = Infinity;
+    hooks.forEach(h => {
+      if (!h.alive) return;
+      if (h.x <= lastHookX) return;     // 이미 지난 공점 무시
+      const d = h.x - lastHookX;
+      if (d < spawnD) { spawnD = d; spawnH = h; }
+    });
+
+    if (spawnH) {
+      P.x = spawnH.x;
+      P.y = spawnH.y - 80;             // 공점 바로 위에서 낙하 시작
+    } else {
+      P.x = lastHookX + 200;
+      P.y = cam.y + H * 0.32;
+    }
+    P.vy = 0; P.vx = Math.max(P.vx * 0.5, 4);
+    P.mode = 'fly'; P.hkRef = null;
+  }
+
+  /* 부활 무적 2초 부여 */
+  invincibleT = INVINCIBLE_FRAMES;
+
+  floatText('OUCH!', P.x, P.y - 44, '#ff5555');
+  floatText('무적!', P.x, P.y - 66, '#ffc93c');
+}
+
+function addCombo() {
+  combo++; comboT = 200;
+  if (combo >= 3) floatText(`${combo}x COMBO!`, P.x, P.y - 72, '#ffc93c');
+}
+
+/* ═══════════════════════════════════════════════════
+   카메라
+═══════════════════════════════════════════════════ */
+function updateCam() {
+  const tx = P.x - W * 0.28;
+  const ty = P.y - H * 0.44;
+  cam.x += (tx - cam.x) * 0.09;
+  cam.y += (ty - cam.y) * 0.08;
+
+  if (cam.x + W * 1.8 > lastChunkX) spawnChunk(lastChunkX);
+
+  const cullX = cam.x - 260;
+  hooks  = hooks.filter(h => h.x > cullX);
+  obs    = obs.filter(o => o.x > cullX);
+  coins  = coins.filter(c => c.x > cullX);
+
+  if (damCD > 0) damCD--;
+  if (invincibleT > 0) invincibleT--;
+  if (comboT > 0) { comboT--; if (!comboT) combo = 0; }
+}
+
+/* ═══════════════════════════════════════════════════
+   파티클 & 플로팅 텍스트
+═══════════════════════════════════════════════════ */
+function burst(x, y, col, n) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, s = 1.5 + Math.random() * 4;
+    parts.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s - 1.5,
+                 life: 35 + Math.random()*20, col, r: 2 + Math.random()*2.5 });
+  }
+}
+
+function floatText(txt, x, y, col) {
+  floatTxts.push({ txt, x, y, col, life: 78, vy: -0.85 });
+}
+
+/* ═══════════════════════════════════════════════════
+   메인 루프
+═══════════════════════════════════════════════════ */
+function loop() {
+  requestAnimationFrame(loop);
+  if (gState !== 'playing') return;
+  frame++;
+  updateHooks();
+  updatePlayer();
+  updateObs();
+  updateCoins();
+  updateCam();
+  draw();
+}
+
+/* ═══════════════════════════════════════════════════
+   HP UI
+═══════════════════════════════════════════════════ */
+function updateHPUI(shake) {
+  for (let i = 1; i <= 3; i++) {
+    const el = document.getElementById('h' + i);
+    el.classList.toggle('lost', i > hp);
+    if (shake && i === hp + 1) {
+      el.classList.add('pop');
+      setTimeout(() => el.classList.remove('pop'), 200);
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   오버레이 제어
+═══════════════════════════════════════════════════ */
+function showOverlay(which) {
+  ['scrStart','scrPause','scrOver'].forEach(id =>
+    document.getElementById(id).classList.add('hidden'));
+  document.getElementById('pauseBtn').style.display = 'none';
+
+  if (which === 'start') {
+    document.getElementById('scrStart').classList.remove('hidden');
+  } else if (which === 'pause') {
+    document.getElementById('scrPause').classList.remove('hidden');
+  } else if (which === 'over') {
+    document.getElementById('ovScore').textContent = score + 'm';
+    document.getElementById('ovBest').textContent  = best  + 'm';
+    localStorage.setItem('nhBest', best);
+    document.getElementById('scrOver').classList.remove('hidden');
+  } else { // 'none' = 게임 중
+    document.getElementById('pauseBtn').style.display = '';
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   게임 흐름
+═══════════════════════════════════════════════════ */
+function startGame() { showOverlay('none'); gState = 'playing'; init(); }
+function pauseGame()  { if (gState !== 'playing') return; gState = 'paused'; showOverlay('pause'); }
+function resumeGame() { if (gState !== 'paused') return; gState = 'playing'; showOverlay('none'); }
+function goMenu()     { gState = 'start'; showOverlay('start'); }
+
+/* ═══════════════════════════════════════════════════
+   이벤트 연결
+═══════════════════════════════════════════════════ */
+document.getElementById('btnStart').onclick     = startGame;
+document.getElementById('btnResume').onclick    = resumeGame;
+document.getElementById('btnPauseMenu').onclick = goMenu;
+document.getElementById('btnRetry').onclick     = startGame;
+document.getElementById('btnOverMenu').onclick  = goMenu;
+document.getElementById('pauseBtn').onclick     = pauseGame;
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if      (gState === 'playing') pauseGame();
+    else if (gState === 'paused')  resumeGame();
+  }
+  if ((e.key === ' ' || e.key === 'Enter') && gState === 'paused') {
+    e.preventDefault(); resumeGame();
+  }
+});
+
+cv.addEventListener('mousedown',   onDown);
+cv.addEventListener('mouseup',     onUp);
+cv.addEventListener('mouseleave',  onUp);
+cv.addEventListener('touchstart',  onDown, { passive: false });
+cv.addEventListener('touchend',    onUp,   { passive: false });
+cv.addEventListener('touchcancel', onUp,   { passive: false });
+
+/* ─── 시작 ─── */
+document.getElementById('bestTxt').textContent = best + 'm';
+
+/* ── 전체화면 스케일링 ──
+   뷰포트 크기에 맞게 #wrap을 scale()로 키운다.
+   게임 내부 좌표계(480×780)는 변경 없음.
+── */
+function applyScale() {
+  const scaleX = window.innerWidth  / 480;
+  const scaleY = window.innerHeight / 780;
+  const scale  = Math.min(scaleX, scaleY); // 비율 유지, 뷰포트 안에 꽉 차게
+  document.getElementById('wrap').style.setProperty('--scale', scale);
+}
+applyScale();
+window.addEventListener('resize', applyScale);
+
+loop();
+</script>
+</body>
+</html>

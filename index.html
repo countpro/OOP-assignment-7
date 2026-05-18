@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>낼름낼름 훅 🐸</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" width="480" height="780"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div class="hud-pill">거리<b id="scoreTxt">0m</b></div>
+    <div class="hud-pill" style="text-align:right">최고<b id="bestTxt">0m</b></div>
+  </div>
+  <button id="pauseBtn">⏸ 일시정지</button>
+  <div id="hpRow">
+    <div class="heart" id="h1">❤️</div>
+    <div class="heart" id="h2">❤️</div>
+    <div class="heart" id="h3">❤️</div>
+  </div>
+  <div id="comboEl"></div>
+
+  <!-- 시작 화면 -->
+  <div class="overlay" id="scrStart">
+    <div class="ov-emoji">🐸</div>
+    <div class="ov-title">낼름낼름 훅</div>
+    <div class="ov-sub">화면을 <b style="color:#a0ffbe">누르면</b> 혀를 발사해 스윙,<br><b style="color:#a0ffbe">떼면</b> 관성으로 날아갑니다!</div>
+    <div class="legend">
+      <div class="lg-row"><div class="lg-dot" style="background:#c8dcff"></div> 일반 공 — 기본 지지점</div>
+      <div class="lg-row"><div class="lg-dot" style="background:#ffd700"></div> ⭐ 황금 공 — 속도 +3 부스트</div>
+      <div class="lg-row"><div class="lg-dot" style="background:#ff6b6b"></div> 🔥 터보 공 — 3초 가속 모드</div>
+      <div class="lg-row"><div class="lg-dot" style="background:#4ecdc4"></div> ❄️ 냉각 공 — 장애물 면역 쉴드</div>
+      <div class="lg-row"><div class="lg-dot" style="background:#ff69b4"></div> 🌀 무빙 공 — 좌우로 이동</div>
+      <div class="lg-row"><div class="lg-dot" style="background:#ff4500;border-radius:3px"></div> 장애물(가시/칼날/레이저) — ❤️ -1</div>
+    </div>
+    <button class="btn-main" id="btnStart">게임 시작!</button>
+    <div class="esc-hint">마우스 클릭 또는 터치로 조작 · ESC = 일시정지</div>
+  </div>
+
+  <!-- 일시정지 화면 -->
+  <div class="overlay hidden" id="scrPause">
+    <div class="ov-emoji" style="font-size:38px">⏸</div>
+    <div class="ov-title">일시정지</div>
+    <div style="height:14px"></div>
+    <div class="keys-section">
+      <div class="key-row"><span class="kbd">클릭 / 터치</span> 혀 발사 &amp; 스윙</div>
+      <div class="key-row"><span class="kbd">손 떼기</span> 관성 발사</div>
+      <div class="key-row"><span class="kbd">ESC</span> 일시정지 · 재개</div>
+      <div class="key-row"><span class="kbd">Space</span> 재개</div>
+    </div>
+    <div class="ov-divider"></div>
+    <button class="btn-main" id="btnResume">▶ 계속하기</button>
+    <button class="btn-sub" id="btnPauseMenu">메뉴로 돌아가기</button>
+  </div>
+
+  <!-- 게임오버 화면 -->
+  <div class="overlay hidden" id="scrOver">
+    <div class="ov-emoji">💀</div>
+    <div class="ov-title">게임 오버</div>
+    <div style="height:14px"></div>
+    <div class="stat-row"><span class="stat-label">이번 거리</span><span class="stat-val" id="ovScore">0m</span></div>
+    <div class="stat-row"><span class="stat-label">최고 거리</span><span class="stat-val" id="ovBest">0m</span></div>
+    <div class="ov-divider"></div>
+    <button class="btn-main" id="btnRetry">🔄 다시 도전!</button>
+    <button class="btn-sub" id="btnOverMenu">메뉴로 돌아가기</button>
+  </div>
+</div>
+
+<!-- draw.js를 먼저, game.js를 나중에 로드 (game.js가 draw.js 함수 호출) -->
+<script src="draw.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
